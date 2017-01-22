@@ -1,21 +1,31 @@
 # coding=gbk
+"""
+genefunc.py
+~~~~~~~~~~~~~~~~
+使用遗传算法挖掘数据
+输入：ref 行为模式库
+codes: 行为的序号和权重，目前所有行为权重都相同，可改成该行为出现的频率
+输出：
+用户的正常行为模式序列
+可能的提示错误：用户的正常行为模式序列输出到mysql数据库时会因为重复数据插入报错
+"""
 import random
 import copy
 
 import pymysql
 
-NS = 42
-ST = 1285
-LEN = 4
-CNUM = 8
-NUM = 5
+NS = 42#所有可能的行为数目，目前样例为42个
+ST = 1285#行为模式库的大小
+LEN = 4#行为模式序列的长度
+CNUM = 8#群体规模
+NUM = 5#迭代次数
 
-
+#个体
 class Chrom:
     def __init__(self):
-        self.seq = [0] * LEN
+        self.seq = [0] * LEN#行为模式序列
         self.M = 0
-        self.fit = 0.0
+        self.fit = 0.0#适应度
 
     def Ccopy(self, a):
         self.seq = copy.copy(a.seq)
@@ -32,14 +42,7 @@ class Code:
     def __init__(self, _id, _count):
         self.id = _id
         self.count = _count
-
-
-def printLar(Lar):
-    for Large in Lar:
-        for index in range(len(Large)):
-            print "%d" % (Large[index])
-
-
+#初始化群体
 def evpop(codes, ref):
     pop = []
     i = 0
@@ -49,15 +52,15 @@ def evpop(codes, ref):
         while (j < LEN):
             chrom.seq[j] = codes[random.randint(0, NS - 1)].id
             j += 1
-        chrom.seq[0] = 4
-        chrom.seq[1] = 5
-        chrom.seq[3] = random.randint(0, 3) + 1
+        chrom.seq[0] = 4#针对样例特殊处理
+        chrom.seq[1] = 5#针对样例特殊处理
+        chrom.seq[3] = random.randint(0, 3) + 1#针对样例特殊处理
         calculatefit(chrom, codes, ref)
         pop += [chrom]
         i += 1
     return pop
 
-
+#交叉操作
 def crossover(popcurrent, codes):
     popnext = []
     i = 0
@@ -103,7 +106,7 @@ def crossover(popcurrent, codes):
         i += 1
     return popnext
 
-
+#变异操作
 def mutation(popnext, codes, ref):
     for chrom in popnext:
         i = 0
@@ -113,14 +116,14 @@ def mutation(popnext, codes, ref):
             i += 1
         calculatefit(chrom, codes, ref)
 
-
+#自然选择操作
 def pickchroms(popcurrent, popnext):
     ret = popcurrent + popnext
     ret.sort(key=lambda obj: obj.fit, reverse=True)
     ret = ret[:CNUM]
     return ret
 
-
+#计算适应度函数
 def calculatefit(chrom, codes, ref):
     E = LEN
     ci = 0.0
@@ -146,7 +149,7 @@ def calculatefit(chrom, codes, ref):
         j += 1
     chrom.fit = ci * chrom.M * pow(NS, E) / ST
 
-
+#读取ref
 def readref():
     ref = []
     try:
@@ -167,7 +170,7 @@ def readref():
     except  Exception:
         print("error")
 
-
+#读取codes
 def readcodes():
     i = 1
     codes = []
@@ -177,7 +180,7 @@ def readcodes():
         i += 1
     return codes
 
-
+#输出正常行为模式到数据库
 def writerules(popcurrent):
     try:
         conn = pymysql.connect(host='localhost', user='root', passwd='root', port=3306, charset='utf8')
@@ -199,7 +202,7 @@ if __name__ == '__main__':
     codes = readcodes()
     popcurrent = evpop(codes, ref)
     dd = 0
-    while dd < 5:
+    while dd < NUM:
         print "当前为第%d轮迭代" % (dd)
         popnext = crossover(popcurrent, codes)
         mutation(popnext, codes, ref)
