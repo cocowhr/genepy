@@ -8,14 +8,16 @@ codes: 行为的序号和权重，目前所有行为权重都相同，可改成该行为出现的频率
 输出：
 用户的正常行为模式序列
 可能的提示错误：用户的正常行为模式序列输出到mysql数据库时会因为重复数据插入报错
+不足：code可以分种类存放 种群初始化按种类可以收敛的更快
+NS和ST LEN 可以自动提取
 """
 import random
 import copy
 
 import pymysql
 
-NS = 42#所有可能的行为数目，目前样例为42个
-ST = 1285#行为模式库的大小
+NS = 1#所有可能的行为数目，目前样例为42个
+ST = 1#行为模式库的大小
 LEN = 4#行为模式序列的长度
 CNUM = 8#群体规模
 NUM = 5#迭代次数
@@ -39,22 +41,24 @@ class Chrom:
 
 
 class Code:
-    def __init__(self, _id, _count):
+    def __init__(self, _id, _count,_column):
         self.id = _id
         self.count = _count
+        self.column=_column
 #初始化群体
 def evpop(codes, ref):
     pop = []
     i = 0
+    codes_column={}
+    for c in codes:
+        codes_column.setdefault(c.column,[])
+        codes_column[c.column]+=[c.id]
     while (i < CNUM):
         chrom = Chrom()
         j = 0
         while (j < LEN):
-            chrom.seq[j] = codes[random.randint(0, NS - 1)].id
+            chrom.seq[j] = codes_column[j][random.randint(0, len(codes_column[j]) - 1)]
             j += 1
-        chrom.seq[0] = 4#针对样例特殊处理
-        chrom.seq[1] = 5#针对样例特殊处理
-        chrom.seq[3] = random.randint(0, 3) + 1#针对样例特殊处理
         calculatefit(chrom, codes, ref)
         pop += [chrom]
         i += 1
@@ -67,7 +71,7 @@ def crossover(popcurrent, codes):
     while i < CNUM - 1:
         j = i + 1
         while j < CNUM:
-            if 120 > random.randint(1, 100):
+            if 80 > random.randint(1, 100):
                 E1 = LEN
                 E2 = LEN
                 c1 = Chrom()
@@ -155,9 +159,13 @@ def readref():
     try:
         conn = pymysql.connect(host='localhost', user='root', passwd='root', port=3306, charset='utf8')
         cur = conn.cursor()
-        cur.execute("USE genet")
-        cur.execute("SELECT * FROM seq2;")
+        cur.execute("USE supervision")
+        cur.execute("SELECT * FROM ip_packet;")
         res = cur.fetchall()
+        global ST
+        ST= len(res)
+        global LEN
+        LEN=len(res[0])-1
         for row in res:
             temp = [0] * LEN
             for index in range(len(row) - 1):
@@ -172,12 +180,20 @@ def readref():
 
 #读取codes
 def readcodes():
-    i = 1
     codes = []
-    while i <= NS:
-        a = Code(i, 0.1)
+    conn = pymysql.connect(host='localhost', user='root', passwd='root', port=3306, charset='utf8')
+    cur = conn.cursor()
+    cur.execute("USE supervision")
+    cur.execute("SELECT * FROM ip_packet_count;")
+    res = cur.fetchall()
+    for row in res:
+        id=row[0]
+        percent=(float)(row[1])/ST
+        a = Code(id,percent,row[2])
         codes += [a]
-        i += 1
+    cur.close()
+    conn.commit()
+    conn.close()
     return codes
 
 #输出正常行为模式到数据库
@@ -185,11 +201,11 @@ def writerules(popcurrent):
     try:
         conn = pymysql.connect(host='localhost', user='root', passwd='root', port=3306, charset='utf8')
         cur = conn.cursor()
-        cur.execute("USE genet")
+        cur.execute("USE supervision")
         for chrom in popcurrent:
             cur.execute(
-                "INSERT IGNORE INTO  rules2 (`seq1`, `seq2`, `seq3`, `seq4`, `fit`)  VALUES ('%d', '%d', '%d', '%d','%lf')" % (
-                chrom.seq[0], chrom.seq[1], chrom.seq[2], chrom.seq[3], chrom.fit))
+                "INSERT IGNORE INTO  ip_packet_generules (`time`, `host`, `user`, `recvip`, `fit`)  VALUES ('%d','%d','%d','%d','%lf')" % (
+                chrom.seq[0], chrom.seq[1], chrom.seq[2], chrom.seq[3],chrom.fit))
         cur.close()
         conn.commit()
         conn.close()
@@ -200,6 +216,7 @@ def writerules(popcurrent):
 if __name__ == '__main__':
     ref = readref()
     codes = readcodes()
+    NS=len(codes)
     popcurrent = evpop(codes, ref)
     dd = 0
     while dd < NUM:
