@@ -154,13 +154,15 @@ def calculatefit(chrom, codes, ref):
     chrom.fit = ci * chrom.M * pow(NS, E) / ST
 
 #读取ref
-def readref():
+def readref(target):
     ref = []
     try:
         conn = pymysql.connect(host='localhost', user='root', passwd='root', port=3306, charset='utf8')
         cur = conn.cursor()
         cur.execute("USE supervision")
-        cur.execute("SELECT * FROM ip_packet;")
+        sql="SELECT * FROM "
+        sql+=target
+        cur.execute(sql)
         res = cur.fetchall()
         global ST
         ST= len(res)
@@ -179,44 +181,52 @@ def readref():
         print("error")
 
 #读取codes
-def readcodes():
+def readcodes(target):
     codes = []
     conn = pymysql.connect(host='localhost', user='root', passwd='root', port=3306, charset='utf8')
     cur = conn.cursor()
     cur.execute("USE supervision")
-    cur.execute("SELECT * FROM ip_packet_count;")
+    sql="SELECT * FROM "
+    sql+=target
+    sql+=" order by pid"
+    cur.execute(sql)
     res = cur.fetchall()
     for row in res:
         id=row[0]
         percent=(float)(row[1])/ST
         a = Code(id,percent,row[2])
         codes += [a]
+    global NS
+    NS=len(codes)
     cur.close()
     conn.commit()
     conn.close()
     return codes
 
 #输出正常行为模式到数据库
-def writerules(popcurrent):
+def writerules(popcurrent,target,field):
     try:
         conn = pymysql.connect(host='localhost', user='root', passwd='root', port=3306, charset='utf8')
         cur = conn.cursor()
         cur.execute("USE supervision")
+        sql="INSERT IGNORE INTO "+target+"("
+        for i in range(len(field)):
+            sql+="`"+field[i]+"`,"
+        sql+="`fit`) VALUES("
         for chrom in popcurrent:
-            cur.execute(
-                "INSERT IGNORE INTO  ip_packet_generules (`time`, `host`, `user`, `recvip`, `fit`)  VALUES ('%d','%d','%d','%d','%lf')" % (
-                chrom.seq[0], chrom.seq[1], chrom.seq[2], chrom.seq[3],chrom.fit))
+            csql=sql
+            for i in range(len(field)):
+                csql+="%d,"%(chrom.seq[i])
+            csql+='%lf)'%(chrom.fit)
+            cur.execute(csql)
         cur.close()
         conn.commit()
         conn.close()
     except  Exception:
         print("error")
-
-
-if __name__ == '__main__':
-    ref = readref()
-    codes = readcodes()
-    NS=len(codes)
+def get_ip_packet_rules():
+    ref = readref("ip_packet")
+    codes = readcodes("ip_packet_count")
     popcurrent = evpop(codes, ref)
     dd = 0
     while dd < NUM:
@@ -226,4 +236,23 @@ if __name__ == '__main__':
         popnext = pickchroms(popcurrent, popnext)
         popcurrent = popnext
         dd += 1
-    writerules(popcurrent)
+    field=["time","host","user","recvip"]
+    writerules(popcurrent,"ip_packet_generules",field)
+def get_warning_information_rules():
+    ref = readref("warning_information")
+    codes = readcodes("warning_information_count")
+    popcurrent = evpop(codes, ref)
+    dd = 0
+    while dd < NUM:
+        print "当前为第%d轮迭代" % (dd)
+        popnext = crossover(popcurrent, codes)
+        mutation(popnext, codes, ref)
+        popnext = pickchroms(popcurrent, popnext)
+        popcurrent = popnext
+        dd += 1
+    field=["time","userid","description","rank","species"]
+    writerules(popcurrent,"warning_information_generules",field)
+
+if __name__ == '__main__':
+    #get_ip_packet_rules()
+    get_warning_information_rules()
