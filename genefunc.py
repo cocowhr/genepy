@@ -7,20 +7,18 @@ genefunc.py
 codes: 行为的序号和权重，目前所有行为权重都相同，可改成该行为出现的频率
 输出：
 用户的正常行为模式序列
-可能的提示错误：用户的正常行为模式序列输出到mysql数据库时会因为重复数据插入报错
-不足：code可以分种类存放 种群初始化按种类可以收敛的更快
-NS和ST LEN 可以自动提取
+可能的提示错误：用户的正常行为模式序列输出到mysql数据库时会因为重复数据插入报警告(但是不会影响插入结果)
 """
 import random
 import copy
 
 import pymysql
 
-NS = 1#所有可能的行为数目，目前样例为42个
-ST = 1#行为模式库的大小
-LEN = 4#行为模式序列的长度
-CNUM = 8#群体规模
-NUM = 5#迭代次数
+NS = 1#所有可能的行为数目，目前样例为42个，在readcodes中获取
+ST = 1#行为模式库的大小,在readref中获得
+LEN = 4#行为模式序列的长度,在readref中获得
+CNUM = 24#群体规模
+NUM = 8#迭代次数
 
 #个体
 class Chrom:
@@ -72,37 +70,17 @@ def crossover(popcurrent, codes):
         j = i + 1
         while j < CNUM:
             if 80 > random.randint(1, 100):
-                E1 = LEN
-                E2 = LEN
                 c1 = Chrom()
                 c2 = Chrom()
-                ci1 = 0
-                ci2 = 0
                 crosspoint = random.randint(0, LEN - 1)
                 k = 0
                 while k < crosspoint:
                     c1.seq[k] = popcurrent[i].seq[k]
                     c2.seq[k] = popcurrent[j].seq[k]
-                    if c1.seq[k] != 0:
-                        ci1 += codes[c1.seq[k] - 1].count
-                    else:
-                        E1 -= 1
-                    if c2.seq[k] != 0:
-                        ci2 += codes[c2.seq[k] - 1].count
-                    else:
-                        E2 -= 1
                     k += 1
                 while k < LEN:
                     c1.seq[k] = popcurrent[j].seq[k]
                     c2.seq[k] = popcurrent[i].seq[k]
-                    if c1.seq[k] != 0:
-                        ci1 += codes[c1.seq[k] - 1].count
-                    else:
-                        E1 -= 1
-                    if c2.seq[k] != 0:
-                        ci2 += codes[c2.seq[k] - 1].count
-                    else:
-                        E2 -= 1
                     k += 1
                 popnext += [c1]
                 popnext += [c2]
@@ -153,7 +131,7 @@ def calculatefit(chrom, codes, ref):
         j += 1
     chrom.fit = ci * chrom.M * pow(NS, E) / ST
 
-#读取ref
+#读取ref 获得LEN和ST
 def readref(target):
     ref = []
     try:
@@ -180,7 +158,7 @@ def readref(target):
     except  Exception:
         print("error")
 
-#读取codes
+#读取codes 获得NS
 def readcodes(target):
     codes = []
     conn = pymysql.connect(host='localhost', user='root', passwd='root', port=3306, charset='utf8')
@@ -203,6 +181,15 @@ def readcodes(target):
     conn.close()
     return codes
 
+def checkequal(pop):
+    c=pop[0].seq
+    eq=True
+    for chrom in pop:
+        if chrom.seq !=c:
+            eq=False
+            break
+    return eq
+
 #输出正常行为模式到数据库
 def writerules(popcurrent,target,field):
     try:
@@ -224,35 +211,58 @@ def writerules(popcurrent,target,field):
         conn.close()
     except  Exception:
         print("error")
+def getrules(target,field):
+    ref = readref(target)
+    codes = readcodes(target+"_count")
+    popcurrent = evpop(codes, ref)
+    dd = 0
+    while dd < NUM:
+        print "当前为第%d轮迭代" % (dd)
+        if checkequal(popcurrent):
+            break
+        popnext = crossover(popcurrent, codes)
+        mutation(popnext, codes, ref)
+        popnext = pickchroms(popcurrent, popnext)
+        popcurrent = popnext
+        dd += 1
+    writerules(popcurrent,target+"_generules",field)
 def get_ip_packet_rules():
-    ref = readref("ip_packet")
-    codes = readcodes("ip_packet_count")
-    popcurrent = evpop(codes, ref)
-    dd = 0
-    while dd < NUM:
-        print "当前为第%d轮迭代" % (dd)
-        popnext = crossover(popcurrent, codes)
-        mutation(popnext, codes, ref)
-        popnext = pickchroms(popcurrent, popnext)
-        popcurrent = popnext
-        dd += 1
     field=["time","host","user","recvip"]
-    writerules(popcurrent,"ip_packet_generules",field)
+    getrules("ip_packet",field)
 def get_warning_information_rules():
-    ref = readref("warning_information")
-    codes = readcodes("warning_information_count")
-    popcurrent = evpop(codes, ref)
-    dd = 0
-    while dd < NUM:
-        print "当前为第%d轮迭代" % (dd)
-        popnext = crossover(popcurrent, codes)
-        mutation(popnext, codes, ref)
-        popnext = pickchroms(popcurrent, popnext)
-        popcurrent = popnext
-        dd += 1
     field=["time","userid","description","rank","species"]
-    writerules(popcurrent,"warning_information_generules",field)
+    getrules("warning_information",field)
+def get_data_process_fileinfo_file_rules():
+    field=["time","file_name","user","operate_type","host_id"]
+    getrules("data_process_fileinfo_file",field)
+def get_data_process_fileinfo_type_rules():
+    field=["time","file_type","user","operate_type","host_id"]
+    getrules("data_process_fileinfo_type",field)
+def get_data_process_mediainfo_file_rules():
+    field=["time","media_name","host_id","file_name","io_type"]
+    getrules("data_process_mediainfo_file",field)
+def get_data_process_mediainfo_type_rules():
+    field=["time","media_name","host_id","file_type","io_type"]
+    getrules("data_process_mediainfo_type",field)
+def get_data_process_resource_warning_rules():
+    field = ["time", "user", "process_id", "resource_name", "warning_rank"]
+    getrules("data_process_resource_warning", field)
 
+#查询行为模式的适应度值，之后根据阈值进行判断是否正常
+def search_fit(target,seq):
+    chrom=Chrom()
+    chrom.seq=seq
+    ref=readref(target)
+    codes=readcodes(target+"_count")
+    calculatefit(chrom,codes,ref)
+    print(chrom.fit)
 if __name__ == '__main__':
     #get_ip_packet_rules()
-    get_warning_information_rules()
+    # get_warning_information_rules()
+    #get_data_process_fileinfo_file_rules()
+    #get_data_process_fileinfo_type_rules()
+    #get_data_process_mediainfo_file_rules()
+    #get_data_process_mediainfo_type_rules()
+    #get_data_process_resource_warning_rules()
+    search_fit("warning_information",[3,9,30,7,31])
+
