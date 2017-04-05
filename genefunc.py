@@ -17,8 +17,8 @@ import pymysql
 NS = 1#所有可能的行为数目，目前样例为42个，在readcodes中获取
 ST = 1#行为模式库的大小,在readref中获得
 LEN = 4#行为模式序列的长度,在readref中获得
-CNUM = 24#群体规模
-NUM = 8#迭代次数
+CNUM = 8#群体规模
+NUM = 15#迭代次数
 
 #个体
 class Chrom:
@@ -44,6 +44,10 @@ class Code:
         self.count = _count
         self.column=_column
 #初始化群体
+
+def getConnection():
+    conn = pymysql.connect(host='localhost',db='supervision', user='root', passwd='root', port=3306, charset='utf8')#之后可以放到配置文件中读取
+    return conn
 def evpop(codes, ref):
     pop = []
     i = 0
@@ -57,6 +61,8 @@ def evpop(codes, ref):
         while (j < LEN):
             chrom.seq[j] = codes_column[j][random.randint(0, len(codes_column[j]) - 1)]
             j += 1
+        # if random.randint(0,1)>0:
+        #     chrom.seq[random.randint(0,LEN-1)]=0#部分规则
         calculatefit(chrom, codes, ref)
         pop += [chrom]
         i += 1
@@ -135,9 +141,8 @@ def calculatefit(chrom, codes, ref):
 def readref(target):
     ref = []
     try:
-        conn = pymysql.connect(host='localhost', user='root', passwd='root', port=3306, charset='utf8')
+        conn =getConnection()
         cur = conn.cursor()
-        cur.execute("USE supervision")
         sql="SELECT * FROM "
         sql+=target
         cur.execute(sql)
@@ -161,9 +166,8 @@ def readref(target):
 #读取codes 获得NS
 def readcodes(target):
     codes = []
-    conn = pymysql.connect(host='localhost', user='root', passwd='root', port=3306, charset='utf8')
+    conn = getConnection()
     cur = conn.cursor()
-    cur.execute("USE supervision")
     sql="SELECT * FROM "
     sql+=target
     sql+=" order by pid"
@@ -180,7 +184,7 @@ def readcodes(target):
     conn.commit()
     conn.close()
     return codes
-
+#查看pop中是否所有种群已经全部相同，全部相同则停止迭代
 def checkequal(pop):
     c=pop[0].seq
     eq=True
@@ -191,26 +195,29 @@ def checkequal(pop):
     return eq
 
 #输出正常行为模式到数据库
-def writerules(popcurrent,target,field):
-    try:
-        conn = pymysql.connect(host='localhost', user='root', passwd='root', port=3306, charset='utf8')
-        cur = conn.cursor()
-        cur.execute("USE supervision")
-        sql="INSERT IGNORE INTO "+target+"("
+def writerules(popcurrent,target,codes,field):
+    conn = getConnection()
+    cur = conn.cursor()
+    basesql2 = "SELECT * FROM "
+    basesql2+= codes
+    basesql2+= " where id="
+    basesql="INSERT IGNORE INTO "+target+"("
+    for i in range(len(field)):
+        basesql+="`"+field[i]+"`,"
+    basesql+="`fit`) VALUES("
+    for chrom in popcurrent:
+        sql=basesql
         for i in range(len(field)):
-            sql+="`"+field[i]+"`,"
-        sql+="`fit`) VALUES("
-        for chrom in popcurrent:
-            csql=sql
-            for i in range(len(field)):
-                csql+="%d,"%(chrom.seq[i])
-            csql+='%lf)'%(chrom.fit)
+            csql=basesql2
+            csql+=str(chrom.seq[i])
             cur.execute(csql)
-        cur.close()
-        conn.commit()
-        conn.close()
-    except  Exception:
-        print("error")
+            res=cur.fetchall()
+            sql+="'%s',"%(res[0][1])
+        sql+='%lf)'%(chrom.fit)
+        cur.execute(sql)
+    cur.close()
+    conn.commit()
+    conn.close()
 def getrules(target,field):
     ref = readref(target)
     codes = readcodes(target+"_count")
@@ -225,10 +232,10 @@ def getrules(target,field):
         popnext = pickchroms(popcurrent, popnext)
         popcurrent = popnext
         dd += 1
-    writerules(popcurrent,target+"_generules",field)
+    writerules(popcurrent,target+"_generules",target+"_codes",field)
 def get_ip_packet_rules():
-    field=["time","host","user","recvip"]
-    getrules("ip_packet",field)
+    field=["time","host_id","send_mac_address","recv_mac_address","send_ip","send_port","recv_ip","recv_port"]
+    getrules("data_process_ippacket",field)
 def get_warning_information_rules():
     field=["time","userid","description","rank","species"]
     getrules("warning_information",field)
@@ -257,12 +264,13 @@ def search_fit(target,seq):
     calculatefit(chrom,codes,ref)
     print(chrom.fit)
 if __name__ == '__main__':
-    #get_ip_packet_rules()
-    # get_warning_information_rules()
+    for i in range(0,10):
+        get_ip_packet_rules()
+    #get_warning_information_rules()
     #get_data_process_fileinfo_file_rules()
     #get_data_process_fileinfo_type_rules()
     #get_data_process_mediainfo_file_rules()
-    #get_data_process_mediainfo_type_rules()
+        #get_data_process_mediainfo_type_rules()
     #get_data_process_resource_warning_rules()
-    search_fit("warning_information",[3,9,30,7,31])
+    #search_fit("warning_information",[2,9,20,7,21])
 
