@@ -11,20 +11,20 @@ codes: 行为的序号和权重，目前所有行为权重都相同，可改成该行为出现的频率
 """
 import random
 import copy
-
+import time
 import pymysql
 
 NS = 1#所有可能的行为数目，目前样例为42个，在readcodes中获取
 ST = 1#行为模式库的大小,在readref中获得
 LEN = 4#行为模式序列的长度,在readref中获得
-CNUM = 8#群体规模
-NUM = 15#迭代次数
+CNUM = 16#群体规模
+NUM = 30#迭代次数
 
 #个体
 class Chrom:
     def __init__(self):
         self.seq = [0] * LEN#行为模式序列
-        self.M = 0
+        self.M = 0#序列在表中出现次数
         self.fit = 0.0#适应度
 
     def Ccopy(self, a):
@@ -99,7 +99,7 @@ def mutation(popnext, codes, ref):
     for chrom in popnext:
         i = 0
         while i < LEN:
-            if random.randint(0, 99) < 5:
+            if random.randint(0, 99) < 25:
                 chrom.seq[i] = random.randint(1, NS)
             i += 1
         calculatefit(chrom, codes, ref)
@@ -113,14 +113,14 @@ def pickchroms(popcurrent, popnext):
 
 #计算适应度函数
 def calculatefit(chrom, codes, ref):
-    E = LEN
+    # E = LEN
     ci = 0.0
     i = 0
     while i < LEN:
         if chrom.seq[i] != 0:
             ci += codes[chrom.seq[i] - 1].count
-        else:
-            E -= 1
+        # else:
+        #     E -= 1
         i += 1
     j = 0
     while j < ST:
@@ -135,7 +135,8 @@ def calculatefit(chrom, codes, ref):
         if eq:
             chrom.M += 1
         j += 1
-    chrom.fit = ci * chrom.M * pow(NS, E) / ST
+    # chrom.fit = ci * chrom.M * pow(NS, E) / ST
+    chrom.fit = ci * chrom.M
 
 #读取ref 获得LEN和ST
 def readref(target):
@@ -245,14 +246,8 @@ def get_data_process_fileinfo_file_rules():
 def get_data_process_fileinfo_type_rules():
     field=["time","file_type","user","operate_type","host_id"]
     getrules("data_process_fileinfo_type",field)
-def get_data_process_mediainfo_file_rules():
-    field=["time","media_name","host_id","file_name","io_type"]
-    getrules("data_process_mediainfo_file",field)
-def get_data_process_mediainfo_type_rules():
-    field=["time","media_name","host_id","file_type","io_type"]
-    getrules("data_process_mediainfo_type",field)
 def get_data_process_resource_warning_rules():
-    field = ["time", "user", "process_id", "resource_name", "warning_rank"]
+    field = ["time", "user", "process_name", "resources_name", "warning_rank"]
     getrules("data_process_resource_warning", field)
 
 #查询行为模式的适应度值，之后根据阈值进行判断是否正常
@@ -264,13 +259,13 @@ def search_fit(target,seq):
     calculatefit(chrom,codes,ref)
     print(chrom.fit)
 if __name__ == '__main__':
-    for i in range(0,10):
-        get_ip_packet_rules()
-    #get_warning_information_rules()
-    #get_data_process_fileinfo_file_rules()
+    start = time.clock()
+    for i in range(0,5):
+        #get_ip_packet_rules()
+        get_warning_information_rules()
+        #get_data_process_fileinfo_file_rules()
     #get_data_process_fileinfo_type_rules()
-    #get_data_process_mediainfo_file_rules()
-        #get_data_process_mediainfo_type_rules()
     #get_data_process_resource_warning_rules()
     #search_fit("warning_information",[2,9,20,7,21])
-
+    end = time.clock()
+    print str(end - start) + "s"
